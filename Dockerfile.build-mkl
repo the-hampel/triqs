@@ -1,0 +1,32 @@
+FROM flatironinstitute/triqs:base-mkl
+ARG APPNAME=triqs
+
+ARG BUILDUID=983
+RUN useradd -u $BUILDUID -m build
+
+ENV SRC=/src \
+    BUILD=/home/build \
+    INSTALL=/usr/local \
+    PYTHONPATH=/usr/local/lib/python$PYTHON_VERSION/site-packages \
+    CMAKE_PREFIX_PATH=/usr/lib/cmake/$APPNAME \
+    CPLUS_INCLUDE_PATH=/usr/include/mkl \
+    OMP_NUM_THREADS=4 \
+    MKL_NUM_THREADS=1 \
+    MKL_INTERFACE_LAYER=GNU,LP64 \
+    MKL_THREADING_LAYER=SEQUENTIAL
+
+# Hacky patch for matplotlib sphinx bug (https://github.com/matplotlib/matplotlib/pull/12456?)
+RUN ln -s /src /home/src
+
+COPY --chown=build . $SRC/$APPNAME
+WORKDIR $BUILD/$APPNAME
+RUN chown build .
+USER build
+ARG BUILD_ID
+ARG CMAKE_ARGS
+ARG NCORES=20
+RUN cmake $SRC/$APPNAME -DCMAKE_INSTALL_PREFIX=$INSTALL -DBuild_Deps=Always -DCLANG_OPT="$CXXFLAGS" $CMAKE_ARGS -DBLA_VENDOR=Intel10_64lp_seq && make -j$NCORES || make -j1 VERBOSE=1
+RUN ctest -J$NCORES
+USER root
+RUN make install
+RUN rm -rf /src
